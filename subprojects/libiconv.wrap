@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/frida/libiconv.git
+revision = 5fed5003a325ab4ef2ecef94888240e962891efa
+depth = 1
+
+[provide]
+dependency_names = libiconv, libcharset

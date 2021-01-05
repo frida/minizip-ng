@@ -1,0 +1,11 @@
+option('zlib',
+  type: 'feature',
+  value: 'auto',
+  description: 'Enables ZLIB compression'
+)
+
+option('lzma',
+  type: 'feature',
+  value: 'auto',
+  description: 'Enables LZMA & XZ compression'
+)
