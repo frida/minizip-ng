@@ -125,7 +125,6 @@ int32_t mz_stream_zlib_read(void *stream, void *buf, int32_t size) {
     uint64_t total_in_after = 0;
     uint64_t total_out_before = 0;
     uint64_t total_out_after = 0;
-    uint32_t total_in = 0;
     uint32_t total_out = 0;
     uint32_t in_bytes = 0;
     uint32_t out_bytes = 0;
@@ -167,7 +166,6 @@ int32_t mz_stream_zlib_read(void *stream, void *buf, int32_t size) {
         in_bytes = (uint32_t)(total_in_before - total_in_after);
         out_bytes = (uint32_t)(total_out_after - total_out_before);
 
-        total_in += in_bytes;
         total_out += out_bytes;
 
         zlib->total_in += in_bytes;
@@ -180,8 +178,6 @@ int32_t mz_stream_zlib_read(void *stream, void *buf, int32_t size) {
             break;
         }
     } while (zlib->zstream.avail_out > 0);
-
-    MZ_UNUSED(total_in);
 
     if (zlib->error != 0) {
         /* Zlib errors are compatible with MZ */
