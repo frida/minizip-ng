@@ -3,43 +3,50 @@
 These functions provide support for handling common file system operations.
 
 - [Path](#path)
-  - [mz_path_combine](#mz_path_combine)
-  - [mz_path_append_slash](#mz_path_append_slash)
-  - [mz_path_remove_slash](#mz_path_remove_slash)
-  - [mz_path_has_slash](#mz_path_has_slash)
-  - [mz_path_convert_slashes](#mz_path_convert_slashes)
-  - [mz_path_compare_wc](#mz_path_compare_wc)
-  - [mz_path_resolve](#mz_path_resolve)
-  - [mz_path_remove_filename](#mz_path_remove_filename)
-  - [mz_path_remove_extension](#mz_path_remove_extension)
-  - [mz_path_get_filename](#mz_path_get_filename)
+  - [mz\_path\_combine](#mz_path_combine)
+  - [mz\_path\_append\_slash](#mz_path_append_slash)
+  - [mz\_path\_remove\_slash](#mz_path_remove_slash)
+  - [mz\_path\_has\_slash](#mz_path_has_slash)
+  - [mz\_path\_convert\_slashes](#mz_path_convert_slashes)
+  - [mz\_path\_compare\_wc](#mz_path_compare_wc)
+  - [mz\_path\_resolve](#mz_path_resolve)
+  - [mz\_path\_remove\_filename](#mz_path_remove_filename)
+  - [mz\_path\_remove\_extension](#mz_path_remove_extension)
+  - [mz\_path\_get\_filename](#mz_path_get_filename)
+  - [mz\_path\_is\_symlink\_target\_safe](#mz_path_is_symlink_target_safe)
 - [Directory](#directory)
-  - [mz_dir_make](#mz_dir_make)
+  - [mz\_dir\_has\_unsafe\_symlink](#mz_dir_has_unsafe_symlink)
+  - [mz\_dir\_make](#mz_dir_make)
 - [File](#file)
-  - [mz_file_get_crc](#mz_file_get_crc)
+  - [mz\_file\_get\_crc](#mz_file_get_crc)
 - [Operating System](#operating-system)
-  - [mz_os_unicode_string_create](#mz_os_unicode_string_create)
-  - [mz_os_unicode_string_delete](#mz_os_unicode_string_delete)
-  - [mz_os_utf8_string_create](#mz_os_utf8_string_create)
-  - [mz_os_utf8_string_delete](#mz_os_utf8_string_delete)
-  - [mz_os_rand](#mz_os_rand)
-  - [mz_os_rename](#mz_os_rename)
-  - [mz_os_unlink](#mz_os_unlink)
-  - [mz_os_file_exists](#mz_os_file_exists)
-  - [mz_os_get_file_size](#mz_os_get_file_size)
-  - [mz_os_get_file_date](#mz_os_get_file_date)
-  - [mz_os_set_file_date](#mz_os_set_file_date)
-  - [mz_os_get_file_attribs](#mz_os_get_file_attribs)
-  - [mz_os_set_file_attribs](#mz_os_set_file_attribs)
-  - [mz_os_make_dir](#mz_os_make_dir)
-  - [mz_os_open_dir](#mz_os_open_dir)
-  - [mz_os_read_dir](#mz_os_read_dir)
-  - [mz_os_close_dir](#mz_os_close_dir)
-  - [mz_os_is_dir](#mz_os_is_dir)
-  - [mz_os_is_symlink](#mz_os_is_symlink)
-  - [mz_os_make_symlink](#mz_os_make_symlink)
-  - [mz_os_read_symlink](#mz_os_read_symlink)
-  - [mz_os_ms_time](#mz_os_ms_time)
+  - [mz\_os\_unicode\_string\_create](#mz_os_unicode_string_create)
+  - [mz\_os\_unicode\_string\_delete](#mz_os_unicode_string_delete)
+  - [mz\_os\_utf8\_string\_create](#mz_os_utf8_string_create)
+  - [mz\_os\_utf8\_string\_create\_from\_unicode](#mz_os_utf8_string_create_from_unicode)
+  - [mz\_os\_utf8\_string\_is\_valid](#mz_os_utf8_string_is_valid)
+  - [mz\_os\_utf8\_string\_delete](#mz_os_utf8_string_delete)
+  - [mz\_os\_get\_default\_encoding](#mz_os_get_default_encoding)
+  - [mz\_os\_rand](#mz_os_rand)
+  - [mz\_os\_rename](#mz_os_rename)
+  - [mz\_os\_unlink](#mz_os_unlink)
+  - [mz\_os\_file\_exists](#mz_os_file_exists)
+  - [mz\_os\_get\_file\_size](#mz_os_get_file_size)
+  - [mz\_os\_get\_file\_date](#mz_os_get_file_date)
+  - [mz\_os\_set\_file\_date](#mz_os_set_file_date)
+  - [mz\_os\_get\_file\_attribs](#mz_os_get_file_attribs)
+  - [mz\_os\_set\_file\_attribs](#mz_os_set_file_attribs)
+  - [mz\_os\_get\_temp\_path](#mz_os_get_temp_path)
+  - [mz\_os\_make\_dir](#mz_os_make_dir)
+  - [mz\_os\_open\_dir](#mz_os_open_dir)
+  - [mz\_os\_read\_dir](#mz_os_read_dir)
+  - [mz\_os\_close\_dir](#mz_os_close_dir)
+  - [mz\_os\_is\_dir](#mz_os_is_dir)
+  - [mz\_os\_is\_symlink](#mz_os_is_symlink)
+  - [mz\_os\_get\_link\_attribs](#mz_os_get_link_attribs)
+  - [mz\_os\_make\_symlink](#mz_os_make_symlink)
+  - [mz\_os\_read\_symlink](#mz_os_read_symlink)
+  - [mz\_os\_ms\_time](#mz_os_ms_time)
 
 ## Path
 
@@ -282,7 +289,59 @@ else
     printf("Path has no filename\n");
 ```
 
+### mz_path_is_symlink_target_safe
+
+Checks if a symbolic link target resolves within a base path. Used to prevent a malicious archive from creating a symbolic link that points outside the extraction directory.
+
+**Arguments**
+|Type|Name|Description|
+|-|-|-|
+|const char *|link_path|Path of the symbolic link to be created|
+|const char *|target|Symbolic link target|
+|const char *|base_path|Base path that the target must not escape|
+
+**Return**
+|Type|Description|
+|-|-|
+|int32_t|[MZ_ERROR](mz_error.md) code, MZ_OK if the target is safe, MZ_EXIST_ERROR if it escapes the base path.|
+
+**Example**
+```
+const char *base_path = "/tmp/extract/";
+const char *link_path = "/tmp/extract/link";
+const char *target = "../outside.txt";
+if (mz_path_is_symlink_target_safe(link_path, target, base_path) == MZ_OK)
+    printf("Symlink target is safe to create\n");
+else
+    printf("Symlink target escapes base path\n");
+```
+
 ## Directory
+
+### mz_dir_has_unsafe_symlink
+
+Checks if any existing component of a path is a symbolic link that escapes a base path. This function is used to prevent symlink-based path traversal attacks during archive extraction.
+
+**Arguments**
+|Type|Name|Description|
+|-|-|-|
+|const char *|path|Path to check|
+|const char *|base_path|Base path that symlinks must not escape|
+
+**Return**
+|Type|Description|
+|-|-|
+|int32_t|[MZ_ERROR](mz_error.md) code, MZ_OK if path is safe, MZ_EXIST_ERROR if an unsafe symlink is found.|
+
+**Example**
+```
+const char *base_path = "/tmp/extract/";
+const char *file_path = "/tmp/extract/subdir/file.txt";
+if (mz_dir_has_unsafe_symlink(file_path, base_path) == MZ_OK)
+    printf("Path is safe to write\n");
+else
+    printf("Path contains unsafe symlink\n");
+```
 
 ### mz_dir_make
 
@@ -357,7 +416,7 @@ Create unicode string from a string with another encoding.
 ```
 char *test = "test";
 wchar_t *test_unicode = mz_os_unicode_string_create(test, MZ_ENCODING_UTF8);
-if (test_unicode != NULL) {
+if (test_unicode) {
     printf("Unicode test string created\n");
     mz_os_unicode_string_delete(&test_unicode);
 }
@@ -376,7 +435,7 @@ Delete a unicode string that was created with _mz_os_unicode_string_create_.
 ```
 char *test = "test";
 wchar_t *test_unicode = mz_os_unicode_string_create(test, MZ_ENCODING_UTF8);
-if (test_unicode != NULL) {
+if (test_unicode) {
     printf("Unicode test string created\n");
     mz_os_unicode_string_delete(&test_unicode);
 }
@@ -395,16 +454,68 @@ Create a utf8 string from a string with another encoding.
 **Return**
 |Type|Description|
 |-|-|
-|uint8_t *|Returns pointer to UTF-8 encoded string if successful, otherwise NULL.|
+|char *|Returns pointer to UTF-8 encoded string if successful, otherwise NULL.|
 
 **Example**
 ```
 char *test = "test";
-wchar_t *test_utf8 = mz_os_utf8_string_create(test, MZ_ENCODING_CODEPAGE_437);
-if (test_utf8 != NULL) {
+char *test_utf8 = mz_os_utf8_string_create(test, MZ_ENCODING_CODEPAGE_437);
+if (test_utf8) {
     printf("UTF-8 test string created\n");
-    mz_os_utf8_string_create(&test_utf8);
+    mz_os_utf8_string_delete(&test_utf8);
 }
+```
+
+### mz_os_utf8_string_create_from_unicode
+
+Creates a UTF-8 string from a unicode string on Windows.
+
+**Arguments**
+
+|Type|Name|Description|
+|-|-|-|
+|const wchar_t *|string|Unicode string to convert|
+|int32_t|encoding|Reserved for encoding selection|
+
+**Return**
+
+|Type|Description|
+|-|-|
+|char *|Returns pointer to UTF-8 encoded string if successful, otherwise NULL.|
+
+**Example**
+
+```c
+wchar_t *test = L"test";
+char *test_utf8 = mz_os_utf8_string_create_from_unicode(test, MZ_ENCODING_UTF8);
+if (test_utf8) {
+    printf("UTF-8 test string created\n");
+    mz_os_utf8_string_delete(&test_utf8);
+}
+```
+
+### mz_os_utf8_string_is_valid
+
+Checks if a string contains a valid UTF-8 byte sequence.
+
+**Arguments**
+
+|Type|Name|Description|
+|-|-|-|
+|const char *|string|String to check|
+
+**Return**
+
+|Type|Description|
+|-|-|
+|int32_t|[MZ_ERROR](mz_error.md) code, MZ_OK if the string is valid UTF-8|
+
+**Example**
+
+```c
+const char *string = "test";
+if (mz_os_utf8_string_is_valid(string) == MZ_OK)
+    printf("String is valid UTF-8\n");
 ```
 
 ### mz_os_utf8_string_delete
@@ -414,16 +525,34 @@ Delete a utf8 string that was created with _mz_os_utf8_string_create_.
 **Arguments**
 |Type|Name|Description|
 |-|-|-|
-|uint8_t **|string|Pointer to utf8 encoded string|
+|char **|string|Pointer to utf8 encoded string|
 
 **Example**
 ```
 char *test = "test";
-wchar_t *test_utf8 = mz_os_utf8_string_create(test, MZ_ENCODING_CODEPAGE_437);
-if (test_utf8 != NULL) {
+char *test_utf8 = mz_os_utf8_string_create(test, MZ_ENCODING_CODEPAGE_437);
+if (test_utf8) {
     printf("UTF-8 test string created\n");
-    mz_os_utf8_string_create(&test_utf8);
+    mz_os_utf8_string_delete(&test_utf8);
 }
+```
+
+### mz_os_get_default_encoding
+
+Gets the system default ANSI code page for legacy string conversion.
+
+**Return**
+
+|Type|Description|
+|-|-|
+|int32_t|System default ANSI code page, or 0 if one is not available|
+
+**Example**
+
+```c
+int32_t encoding = mz_os_get_default_encoding();
+if (encoding > 0)
+    printf("System default encoding: %d\n", encoding);
 ```
 
 ### mz_os_rand
@@ -594,7 +723,7 @@ if (mz_os_get_file_date(src_path, &modified_date, &accessed_date, &creation_date
 
 ### mz_os_get_file_attribs
 
-Gets a file's attributes.
+Gets a file's attributes, following symbolic links.
 
 **Arguments**
 |Type|Name|Description|
@@ -643,6 +772,29 @@ if (mz_os_get_file_attribs(path, &attributes) == MZ_OK) {
 }
 ```
 
+### mz_os_get_temp_path
+
+Gets a unique temporary file path.
+
+**Arguments**
+|Type|Name|Description|
+|-|-|-|
+|char *|path|Buffer to store the temporary path|
+|int32_t|max_path|Maximum size of the path buffer|
+|const char *|prefix|Optional prefix for the temporary filename (can be NULL)|
+
+**Return**
+|Type|Description|
+|-|-|
+|int32_t|[MZ_ERROR](mz_error.md) code, MZ_OK if successful|
+
+**Example**
+```
+char tmp_path[256];
+if (mz_os_get_temp_path(tmp_path, sizeof(tmp_path), "mz_") == MZ_OK)
+    printf("Temporary path: %s\n", tmp_path);
+```
+
 ### mz_os_make_dir
 
 Creates a directory. To recursively create a directory use _mz_dir_make_.
@@ -681,7 +833,7 @@ Opens a directory for listing.
 ```
 const char *search_dir = "c:\\test1\\";
 DIR *dir = mz_open_dir(search_dir);
-if (dir != NULL) {
+if (dir) {
     printf("Dir %s was opened\n", search_dir);
     mz_os_close_dir(dir);
 }
@@ -705,10 +857,10 @@ Reads a directory listing entry.
 ```
 const char *search_dir = "c:\\test2\\";
 DIR *dir = mz_open_dir(search_dir);
-if (dir != NULL) {
+if (dir) {
     struct dirent *entry = NULL;
     printf("Dir %s was opened\n", search_dir);
-    while ((entry = mz_os_read_dir(dir)) != NULL) {
+    while ((entry = mz_os_read_dir(dir))) {
         printf("Dir entry: %s was opened\n", entry->d_name);
     }
     mz_os_close_dir(dir);
@@ -733,10 +885,10 @@ Closes a directory that has been opened for listing.
 ```
 const char *search_dir = "c:\\test3\\";
 DIR *dir = mz_open_dir(search_dir);
-if (dir != NULL) {
+if (dir) {
     struct dirent *entry = NULL;
     printf("Dir %s was opened\n", search_dir);
-    while ((entry = mz_os_read_dir(dir)) != NULL) {
+    while ((entry = mz_os_read_dir(dir))) {
         printf("Dir entry: %s was opened\n", entry->d_name);
     }
     mz_os_close_dir(dir);
@@ -787,6 +939,29 @@ if (mz_os_is_symlink(path) == MZ_OK)
     printf("Path %s is a symbolic link\n", path);
 else
     printf("Path %s is not a symbolic link\n", path);
+```
+
+### mz_os_get_link_attribs
+
+Gets a symbolic link's attributes.
+
+**Arguments**
+|Type|Name|Description|
+|-|-|-|
+|const char *|path|File path|
+|uint32_t *|attributes|Pointer to store file attributes value|
+
+**Return**
+|Type|Description|
+|-|-|
+|int32_t|[MZ_ERROR](mz_error.md) code, MZ_OK if successful|
+
+**Example**
+```
+const char *path = "c:\\test7.txt";
+uint32_t attributes = 0;
+if (mz_os_get_link_attribs(path, &attributes) == MZ_OK)
+    printf("Link %s attributes %08x\n", path, attributes);
 ```
 
 ### mz_os_make_symlink

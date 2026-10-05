@@ -1,14 +1,13 @@
 /* mz_strm_wzaes.c -- Stream for WinZip AES encryption
    part of the minizip-ng project
 
-   Copyright (C) 2010-2021 Nathan Moinvaziri
+   Copyright (C) Nathan Moinvaziri
       https://github.com/zlib-ng/minizip-ng
    Copyright (C) 1998-2010 Brian Gladman, Worcester, UK
 
    This program is distributed under the terms of the same license as zlib.
    See the accompanying LICENSE file for the full text of the license.
 */
-
 
 #include "mz.h"
 #include "mz_crypt.h"
@@ -17,48 +16,36 @@
 
 /***************************************************************************/
 
-#define MZ_AES_KEYING_ITERATIONS    (1000)
-#define MZ_AES_SALT_LENGTH(MODE)    (4 * (MODE & 3) + 4)
-#define MZ_AES_SALT_LENGTH_MAX      (16)
-#define MZ_AES_PW_LENGTH_MAX        (128)
-#define MZ_AES_PW_VERIFY_SIZE       (2)
-#define MZ_AES_AUTHCODE_SIZE        (10)
+#define MZ_AES_KEY_LENGTH(STRENGTH)  (8 * (STRENGTH & 3) + 8)
+#define MZ_AES_KEYING_ITERATIONS     (1000)
+#define MZ_AES_SALT_LENGTH(STRENGTH) (4 * (STRENGTH & 3) + 4)
+#define MZ_AES_SALT_LENGTH_MAX       (16)
+#define MZ_AES_PW_LENGTH_MAX         (128)
+#define MZ_AES_PW_VERIFY_SIZE        (2)
+#define MZ_AES_AUTHCODE_SIZE         (10)
 
 /***************************************************************************/
 
 static mz_stream_vtbl mz_stream_wzaes_vtbl = {
-    mz_stream_wzaes_open,
-    mz_stream_wzaes_is_open,
-    mz_stream_wzaes_read,
-    mz_stream_wzaes_write,
-    mz_stream_wzaes_tell,
-    mz_stream_wzaes_seek,
-    mz_stream_wzaes_close,
-    mz_stream_wzaes_error,
-    mz_stream_wzaes_create,
-    mz_stream_wzaes_delete,
-    mz_stream_wzaes_get_prop_int64,
-    mz_stream_wzaes_set_prop_int64
-};
+    mz_stream_wzaes_open,   mz_stream_wzaes_is_open, mz_stream_wzaes_read,           mz_stream_wzaes_write,
+    mz_stream_wzaes_tell,   mz_stream_wzaes_seek,    mz_stream_wzaes_close,          mz_stream_wzaes_error,
+    mz_stream_wzaes_create, mz_stream_wzaes_delete,  mz_stream_wzaes_get_prop_int64, mz_stream_wzaes_set_prop_int64};
 
 /***************************************************************************/
 
 typedef struct mz_stream_wzaes_s {
-    mz_stream       stream;
-    int32_t         mode;
-    int32_t         error;
-    int16_t         initialized;
-    uint8_t         buffer[UINT16_MAX];
-    int64_t         total_in;
-    int64_t         max_total_in;
-    int64_t         total_out;
-    int16_t         encryption_mode;
-    const char      *password;
-    void            *aes;
-    uint32_t        crypt_pos;
-    uint8_t         crypt_block[MZ_AES_BLOCK_SIZE];
-    void            *hmac;
-    uint8_t         nonce[MZ_AES_BLOCK_SIZE];
+    mz_stream stream;
+    int32_t mode;
+    int32_t error;
+    int16_t initialized;
+    uint8_t buffer[UINT16_MAX];
+    int64_t total_in;
+    int64_t max_total_in;
+    int64_t total_out;
+    uint8_t strength;
+    const char *password;
+    void *ctr;
+    void *hmac;
 } mz_stream_wzaes;
 
 /***************************************************************************/
@@ -72,6 +59,7 @@ int32_t mz_stream_wzaes_open(void *stream, const char *path, int32_t mode) {
     uint8_t verify[MZ_AES_PW_VERIFY_SIZE];
     uint8_t verify_expected[MZ_AES_PW_VERIFY_SIZE];
     uint8_t salt_value[MZ_AES_SALT_LENGTH_MAX];
+    const uint8_t nonce[MZ_AES_BLOCK_SIZE] = {1};
     const char *password = path;
 
     wzaes->total_in = 0;
@@ -81,18 +69,19 @@ int32_t mz_stream_wzaes_open(void *stream, const char *path, int32_t mode) {
     if (mz_stream_is_open(wzaes->stream.base) != MZ_OK)
         return MZ_OPEN_ERROR;
 
-    if (password == NULL)
+    if (!password)
         password = wzaes->password;
-    if (password == NULL)
+    if (!password)
         return MZ_PARAM_ERROR;
     password_length = (uint16_t)strlen(password);
     if (password_length > MZ_AES_PW_LENGTH_MAX)
         return MZ_PARAM_ERROR;
 
-    if (wzaes->encryption_mode < 1 || wzaes->encryption_mode > 3)
+    if (wzaes->strength < 1 || wzaes->strength > 3)
         return MZ_PARAM_ERROR;
 
-    salt_length = MZ_AES_SALT_LENGTH(wzaes->encryption_mode);
+    key_length = MZ_AES_KEY_LENGTH(wzaes->strength);
+    salt_length = MZ_AES_SALT_LENGTH(wzaes->strength);
 
     if (mode & MZ_OPEN_MODE_WRITE) {
         mz_crypt_rand(salt_value, salt_length);
@@ -101,20 +90,13 @@ int32_t mz_stream_wzaes_open(void *stream, const char *path, int32_t mode) {
             return MZ_READ_ERROR;
     }
 
-    key_length = MZ_AES_KEY_LENGTH(wzaes->encryption_mode);
-
     /* Derive the encryption and authentication keys and the password verifier */
-    mz_crypt_pbkdf2((uint8_t *)password, password_length, salt_value, salt_length,
-        MZ_AES_KEYING_ITERATIONS, kbuf, 2 * key_length + MZ_AES_PW_VERIFY_SIZE);
+    mz_crypt_pbkdf2((uint8_t *)password, password_length, salt_value, salt_length, MZ_AES_KEYING_ITERATIONS, kbuf,
+                    2 * key_length + MZ_AES_PW_VERIFY_SIZE);
 
-    /* Initialize the encryption nonce and buffer pos */
-    wzaes->crypt_pos = MZ_AES_BLOCK_SIZE;
-    memset(wzaes->nonce, 0, sizeof(wzaes->nonce));
-
-    /* Initialize for encryption using key 1 */
-    mz_crypt_aes_reset(wzaes->aes);
-    mz_crypt_aes_set_mode(wzaes->aes, wzaes->encryption_mode);
-    mz_crypt_aes_set_encrypt_key(wzaes->aes, kbuf, key_length);
+    /* Initialize for encryption using key 1, WinZip AES starts its counter at one */
+    if (mz_crypt_aes_ctr_set_key(wzaes->ctr, kbuf, key_length, nonce, sizeof(nonce)) != MZ_OK)
+        return MZ_CRYPT_ERROR;
 
     /* Initialize for authentication using key 2 */
     mz_crypt_hmac_reset(wzaes->hmac);
@@ -153,36 +135,9 @@ int32_t mz_stream_wzaes_open(void *stream, const char *path, int32_t mode) {
 
 int32_t mz_stream_wzaes_is_open(void *stream) {
     mz_stream_wzaes *wzaes = (mz_stream_wzaes *)stream;
-    if (wzaes->initialized == 0)
+    if (!wzaes->initialized)
         return MZ_OPEN_ERROR;
     return MZ_OK;
-}
-
-static int32_t mz_stream_wzaes_ctr_encrypt(void *stream, uint8_t *buf, int32_t size) {
-    mz_stream_wzaes *wzaes = (mz_stream_wzaes *)stream;
-    uint32_t pos = wzaes->crypt_pos;
-    uint32_t i = 0;
-    int32_t err = MZ_OK;
-
-    while (i < (uint32_t)size) {
-        if (pos == MZ_AES_BLOCK_SIZE) {
-            uint32_t j = 0;
-
-            /* Increment encryption nonce */
-            while (j < 8 && !++wzaes->nonce[j])
-                j += 1;
-
-            /* Encrypt the nonce to form next xor buffer */
-            memcpy(wzaes->crypt_block, wzaes->nonce, MZ_AES_BLOCK_SIZE);
-            mz_crypt_aes_encrypt(wzaes->aes, wzaes->crypt_block, sizeof(wzaes->crypt_block));
-            pos = 0;
-        }
-
-        buf[i++] ^= wzaes->crypt_block[pos++];
-    }
-
-    wzaes->crypt_pos = pos;
-    return err;
 }
 
 int32_t mz_stream_wzaes_read(void *stream, void *buf, int32_t size) {
@@ -199,7 +154,8 @@ int32_t mz_stream_wzaes_read(void *stream, void *buf, int32_t size) {
 
     if (read > 0) {
         mz_crypt_hmac_update(wzaes->hmac, (uint8_t *)buf, read);
-        mz_stream_wzaes_ctr_encrypt(stream, (uint8_t *)buf, read);
+        if (mz_crypt_aes_ctr_encrypt(wzaes->ctr, (uint8_t *)buf, read) != MZ_OK)
+            return MZ_CRYPT_ERROR;
 
         wzaes->total_in += read;
     }
@@ -224,7 +180,9 @@ int32_t mz_stream_wzaes_write(void *stream, const void *buf, int32_t size) {
         memcpy(wzaes->buffer, buf_ptr, bytes_to_write);
         buf_ptr += bytes_to_write;
 
-        mz_stream_wzaes_ctr_encrypt(stream, (uint8_t *)wzaes->buffer, bytes_to_write);
+        if (mz_crypt_aes_ctr_encrypt(wzaes->ctr, (uint8_t *)wzaes->buffer, bytes_to_write) != MZ_OK)
+            return MZ_CRYPT_ERROR;
+
         mz_crypt_hmac_update(wzaes->hmac, wzaes->buffer, bytes_to_write);
 
         written = mz_stream_write(wzaes->stream.base, wzaes->buffer, bytes_to_write);
@@ -285,9 +243,9 @@ void mz_stream_wzaes_set_password(void *stream, const char *password) {
     wzaes->password = password;
 }
 
-void mz_stream_wzaes_set_encryption_mode(void *stream, int16_t encryption_mode) {
+void mz_stream_wzaes_set_strength(void *stream, uint8_t strength) {
     mz_stream_wzaes *wzaes = (mz_stream_wzaes *)stream;
-    wzaes->encryption_mode = encryption_mode;
+    wzaes->strength = strength;
 }
 
 int32_t mz_stream_wzaes_get_prop_int64(void *stream, int32_t prop, int64_t *value) {
@@ -303,7 +261,7 @@ int32_t mz_stream_wzaes_get_prop_int64(void *stream, int32_t prop, int64_t *valu
         *value = wzaes->max_total_in;
         break;
     case MZ_STREAM_PROP_HEADER_SIZE:
-        *value = MZ_AES_SALT_LENGTH((int64_t)wzaes->encryption_mode) + MZ_AES_PW_VERIFY_SIZE;
+        *value = MZ_AES_SALT_LENGTH((int64_t)wzaes->strength) + MZ_AES_PW_VERIFY_SIZE;
         break;
     case MZ_STREAM_PROP_FOOTER_SIZE:
         *value = MZ_AES_AUTHCODE_SIZE;
@@ -326,33 +284,38 @@ int32_t mz_stream_wzaes_set_prop_int64(void *stream, int32_t prop, int64_t value
     return MZ_OK;
 }
 
-void *mz_stream_wzaes_create(void **stream) {
-    mz_stream_wzaes *wzaes = NULL;
-
-    wzaes = (mz_stream_wzaes *)MZ_ALLOC(sizeof(mz_stream_wzaes));
-    if (wzaes != NULL) {
-        memset(wzaes, 0, sizeof(mz_stream_wzaes));
+void *mz_stream_wzaes_create(void) {
+    mz_stream_wzaes *wzaes = (mz_stream_wzaes *)calloc(1, sizeof(mz_stream_wzaes));
+    if (wzaes) {
         wzaes->stream.vtbl = &mz_stream_wzaes_vtbl;
-        wzaes->encryption_mode = MZ_AES_ENCRYPTION_MODE_256;
+        wzaes->strength = MZ_AES_STRENGTH_256;
 
-        mz_crypt_hmac_create(&wzaes->hmac);
-        mz_crypt_aes_create(&wzaes->aes);
+        wzaes->hmac = mz_crypt_hmac_create();
+        if (!wzaes->hmac) {
+            free(wzaes);
+            return NULL;
+        }
+        wzaes->ctr = mz_crypt_aes_ctr_create();
+        if (!wzaes->ctr) {
+            mz_crypt_hmac_delete(&wzaes->hmac);
+            free(wzaes);
+            return NULL;
+        }
+
+        mz_crypt_aes_ctr_set_counter(wzaes->ctr, MZ_AES_CTR_LE8);
     }
-    if (stream != NULL)
-        *stream = wzaes;
-
     return wzaes;
 }
 
 void mz_stream_wzaes_delete(void **stream) {
     mz_stream_wzaes *wzaes = NULL;
-    if (stream == NULL)
+    if (!stream)
         return;
     wzaes = (mz_stream_wzaes *)*stream;
-    if (wzaes != NULL) {
-        mz_crypt_aes_delete(&wzaes->aes);
+    if (wzaes) {
+        mz_crypt_aes_ctr_delete(&wzaes->ctr);
         mz_crypt_hmac_delete(&wzaes->hmac);
-        MZ_FREE(wzaes);
+        free(wzaes);
     }
     *stream = NULL;
 }

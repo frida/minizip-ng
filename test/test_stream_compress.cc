@@ -1,7 +1,7 @@
 /* test_stream_compress.cc - Test basic compression
    part of the minizip-ng project
 
-   Copyright (C) 2018-2022 Nathan Moinvaziri
+   Copyright (C) Nathan Moinvaziri
      https://github.com/zlib-ng/minizip-ng
 
    This program is distributed under the terms of the same license as zlib.
@@ -20,6 +20,9 @@
 #ifdef HAVE_LZMA
 #  include "mz_strm_lzma.h"
 #endif
+#ifdef HAVE_PPMD
+#  include "mz_strm_ppmd.h"
+#endif
 #ifdef HAVE_ZLIB
 #  include "mz_strm_zlib.h"
 #endif
@@ -29,6 +32,9 @@
 
 #include <gtest/gtest.h>
 
+#ifndef MZ_ZIP_NO_COMPRESSION
+
+#ifndef MZ_ZIP_NO_DECOMPRESSION
 static void test_compare_stream_to_end(void *source1, void *source2) {
     uint8_t source1_buf[4096];
     uint8_t source2_buf[4096];
@@ -46,25 +52,31 @@ static void test_compare_stream_to_end(void *source1, void *source2) {
         EXPECT_EQ(memcmp(source1_buf, source2_buf, source1_read), 0);
     } while (1);
 }
+#endif
 
 static void test_compress(const char *method, mz_stream_create_cb create_compress) {
     int64_t total_in = 0;
     int64_t total_out = 0;
     void *org_stream = NULL;
     void *compress_stream = NULL;
-    void *uncompress_stream = NULL;
     void *deflate_stream = NULL;
+#ifndef MZ_ZIP_NO_DECOMPRESSION
+    void *uncompress_stream = NULL;
     void *inflate_stream = NULL;
+#endif
 
     /* Open file to be compressed */
-    mz_stream_os_create(&org_stream);
+    org_stream = mz_stream_os_create();
+    ASSERT_NE(org_stream, nullptr);
     ASSERT_EQ(mz_stream_os_open(org_stream, "LICENSE", MZ_OPEN_MODE_READ), MZ_OK);
 
     /* Compress data into memory stream */
-    mz_stream_mem_create(&compress_stream);
+    compress_stream = mz_stream_mem_create();
+    ASSERT_NE(compress_stream, nullptr);
     ASSERT_EQ(mz_stream_mem_open(compress_stream, NULL, MZ_OPEN_MODE_CREATE), MZ_OK);
 
-    create_compress(&deflate_stream);
+    deflate_stream = create_compress();
+    ASSERT_NE(deflate_stream, nullptr);
     mz_stream_set_base(deflate_stream, compress_stream);
 
     /* Copy data from file stream and write to compression stream */
@@ -82,13 +94,16 @@ static void test_compress(const char *method, mz_stream_create_cb create_compres
 
     printf("%s compressed from %u to %u\n", method, (uint32_t)total_in, (uint32_t)total_out);
 
+#ifndef MZ_ZIP_NO_DECOMPRESSION
     /* Decompress data into memory stream */
-    mz_stream_mem_create(&uncompress_stream);
+    uncompress_stream = mz_stream_mem_create();
+    ASSERT_NE(uncompress_stream, nullptr);
     ASSERT_EQ(mz_stream_mem_open(uncompress_stream, NULL, MZ_OPEN_MODE_CREATE), MZ_OK);
 
     mz_stream_seek(compress_stream, 0, MZ_SEEK_SET);
 
-    create_compress(&inflate_stream);
+    inflate_stream = create_compress();
+    ASSERT_NE(inflate_stream, nullptr);
     mz_stream_set_base(inflate_stream, compress_stream);
 
     mz_stream_open(inflate_stream, NULL, MZ_OPEN_MODE_READ);
@@ -113,6 +128,7 @@ static void test_compress(const char *method, mz_stream_create_cb create_compres
 
     mz_stream_mem_close(uncompress_stream);
     mz_stream_mem_delete(&uncompress_stream);
+#endif
 
     mz_stream_mem_close(compress_stream);
     mz_stream_mem_delete(&compress_stream);
@@ -131,6 +147,11 @@ TEST(stream, lzma) {
     return test_compress("lzma", mz_stream_lzma_create);
 }
 #endif
+#ifdef HAVE_PPMD
+TEST(stream, ppmd) {
+    return test_compress("ppmd", mz_stream_ppmd_create);
+}
+#endif
 #ifdef HAVE_ZLIB
 TEST(stream, zlib) {
     return test_compress("zlib", mz_stream_zlib_create);
@@ -140,4 +161,6 @@ TEST(stream, zlib) {
 TEST(stream, zstd) {
     return test_compress("zstd", mz_stream_zstd_create);
 }
+#endif
+
 #endif
