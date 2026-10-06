@@ -25,6 +25,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#ifndef S_ISVTX
+#define S_ISVTX 0
+#endif
+
 #ifndef _WIN32
 #  include <utime.h>
 #  include <unistd.h>
