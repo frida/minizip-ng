@@ -24,6 +24,10 @@
 #include <unistd.h>   /* open, close, ... */
 #include <fcntl.h>    /* O_NOFOLLOW, ... */
 
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0
+#endif
+
 /***************************************************************************/
 
 #define fopen64 fopen
